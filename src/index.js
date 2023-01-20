@@ -24,6 +24,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { STLExporter } from "three/addons/exporters/STLExporter.js";
 import { GUI } from "three/addons/libs/lil-gui.module.min.js";
+import * as BufferGeometryUtils from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
 let scene, camera, renderer, exporter, mesh;
 
@@ -41,23 +42,61 @@ function init() {
     1,
     1000
   );
-  camera.position.set(200, 300, 200);
+  camera.position.set(100, 25, 150);
+  camera.up.set(0, 0, 1);
 
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0xa0a0a0);
 
+  // The X axis is red. The Y axis is green. The Z axis is blue.
+  let axesHelper = new THREE.AxesHelper(60);
+  scene.add(axesHelper);
+
   exporter = new STLExporter();
 
   const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444);
-  hemiLight.position.set(0, 200, 0);
+  hemiLight.position.set(50, 0, 100);
   scene.add(hemiLight);
 
-  const geometry = new THREE.BoxGeometry(50, 50, 50);
-  const material = new THREE.MeshPhongMaterial({ color: 0x00ff00 });
+  const material = new THREE.MeshPhongMaterial({ color: 0xcccccc });
 
-  mesh = new THREE.Mesh(geometry, material);
-  mesh.position.set(0, 25, 0);
+  const geometry0 = new THREE.BoxGeometry(80, 80, 1);
+
+  const length = 6;
+  const width = 4;
+
+  const shape = new THREE.Shape();
+  shape.moveTo(0, 0);
+  shape.lineTo(0, width);
+  shape.lineTo(length, width);
+  shape.lineTo(length, 0);
+  shape.lineTo(0, 0);
+
+  const extrudeSettings = {
+    steps: 1,
+    depth: 4,
+  };
+
+  const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+
+  let merged = BufferGeometryUtils.mergeBufferGeometries([
+    geometry0.toNonIndexed(),
+    geometry,
+  ]);
+
+  mesh = new THREE.Mesh(merged, material);
+  //mesh.position.set(0, 0, 2);
   scene.add(mesh);
+
+  /*
+  const wireframe = new THREE.WireframeGeometry(geometry);
+  const line = new THREE.LineSegments(wireframe);
+  line.material.depthTest = false;
+  line.material.opacity = 0.25;
+  line.material.transparent = true;
+
+  scene.add(line);
+*/
 
   renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(window.devicePixelRatio);
@@ -65,7 +104,7 @@ function init() {
   document.body.appendChild(renderer.domElement);
 
   const controls = new OrbitControls(camera, renderer.domElement);
-  controls.target.set(0, 25, 0);
+  controls.target.set(0, 0, 10);
   controls.update();
 
   window.addEventListener("resize", onWindowResize);
