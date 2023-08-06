@@ -10,7 +10,7 @@
     "start": "webpack serve --config ./config/webpack.config.dev.js"
   },
   "dependencies": {
-    "three": "^0.148.0"
+    "three": "^0.155.0"
   },
   "devDependencies": {
     "adm-zip": "^0.5.9",

@@ -79,7 +79,7 @@ function init() {
 
   const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
 
-  let merged = BufferGeometryUtils.mergeBufferGeometries([
+  let merged = BufferGeometryUtils.mergeGeometries([
     geometry0.toNonIndexed(),
     geometry,
   ]);
