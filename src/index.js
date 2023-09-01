@@ -27,10 +27,10 @@ import { GUI } from "three/addons/libs/lil-gui.module.min.js";
 import * as BufferGeometryUtils from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
 let scene, camera, renderer, exporter, mesh;
+const geometries = [];
 
-const params = {
-  exportASCII: exportASCII,
-};
+const materialColor = 0x118ab2;
+const backgroundColor = 0x073b4c;
 
 init();
 animate();
@@ -42,61 +42,38 @@ function init() {
     1,
     1000
   );
-  camera.position.set(100, 25, 150);
-  camera.up.set(0, 0, 1);
+  camera.position.set(120, 50, 120);
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xa0a0a0);
+  scene.background = new THREE.Color(backgroundColor);
 
   // The X axis is red. The Y axis is green. The Z axis is blue.
-  let axesHelper = new THREE.AxesHelper(60);
-  scene.add(axesHelper);
+  //let axesHelper = new THREE.AxesHelper(60);
+  //scene.add(axesHelper);
 
   exporter = new STLExporter();
 
-  const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444);
-  hemiLight.position.set(50, 0, 100);
+  const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 2);
   scene.add(hemiLight);
 
-  const material = new THREE.MeshPhongMaterial({ color: 0xcccccc });
+  const material = new THREE.MeshPhongMaterial({ color: materialColor });
 
-  const geometry0 = new THREE.BoxGeometry(80, 80, 1);
+  const floorGeometry = new THREE.BoxGeometry(80, 1, 80);
+  geometries.push(floorGeometry);
 
-  const length = 6;
-  const width = 4;
-
-  const shape = new THREE.Shape();
-  shape.moveTo(0, 0);
-  shape.lineTo(0, width);
-  shape.lineTo(length, width);
-  shape.lineTo(length, 0);
-  shape.lineTo(0, 0);
-
-  const extrudeSettings = {
-    steps: 1,
-    depth: 4,
-  };
-
-  const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-
-  let merged = BufferGeometryUtils.mergeGeometries([
-    geometry0.toNonIndexed(),
-    geometry,
-  ]);
+  let merged = BufferGeometryUtils.mergeGeometries([floorGeometry]);
 
   mesh = new THREE.Mesh(merged, material);
   //mesh.position.set(0, 0, 2);
   scene.add(mesh);
 
-  /*
-  const wireframe = new THREE.WireframeGeometry(geometry);
+  const wireframe = new THREE.WireframeGeometry(merged);
   const line = new THREE.LineSegments(wireframe);
-  line.material.depthTest = false;
+  //line.material.depthTest = false;
   line.material.opacity = 0.25;
   line.material.transparent = true;
 
   scene.add(line);
-*/
 
   renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(window.devicePixelRatio);
@@ -109,8 +86,12 @@ function init() {
 
   window.addEventListener("resize", onWindowResize);
 
+  const params = {
+    exportBinary: exportBinary,
+  };
+
   const gui = new GUI();
-  gui.add(params, "exportASCII").name("Export STL (ASCII)");
+  gui.add(params, "exportBinary").name("Export STL");
   gui.open();
 }
 
@@ -122,16 +103,30 @@ function onWindowResize() {
 
 function animate() {
   requestAnimationFrame(animate);
+  scene.rotation.y += 0.0025;
+  camera.lookAt(0, 10, 0);
   renderer.render(scene, camera);
 }
 
-function exportASCII() {
-  const result = exporter.parse(mesh);
-  saveString(result, `${fxhash}.stl`);
+function exportBinary() {
+  // we need to apply a transform to the mesh
+  // because blender is a z-up application,
+  let meshMaterial = new THREE.MeshPhongMaterial({ color: materialColor });
+  const mesh = new THREE.Mesh(
+    BufferGeometryUtils.mergeGeometries(geometries),
+    meshMaterial
+  );
+  mesh.rotateX(Math.PI / 2);
+  mesh.rotateY(0);
+  mesh.updateMatrix();
+  mesh.geometry.applyMatrix4(mesh.matrix);
+
+  const result = exporter.parse(mesh, { binary: true });
+  saveArrayBuffer(result, `${fxhash}.stl`);
 }
 
-function saveString(text, filename) {
-  save(new Blob([text], { type: "text/plain" }), filename);
+function saveArrayBuffer(buffer, filename) {
+  save(new Blob([buffer], { type: "application/octet-stream" }), filename);
 }
 
 const link = document.createElement("a");
