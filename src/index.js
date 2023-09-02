@@ -25,15 +25,59 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { STLExporter } from "three/addons/exporters/STLExporter.js";
 import { GUI } from "three/addons/libs/lil-gui.module.min.js";
 import * as BufferGeometryUtils from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { ParametricGeometry } from "three/addons/geometries/ParametricGeometry.js";
+
+import alea from "alea";
+import { createNoise2D } from "simplex-noise";
+
+const prng = alea(fxrand() * 1000000);
+const noise2D = createNoise2D(prng);
 
 let scene, camera, renderer, exporter, mesh;
 const geometries = [];
 
-const materialColor = 0x118ab2;
-const backgroundColor = 0x073b4c;
+const maxSize = 100;
+
+const materialColor = "#e0e1dd";
+const materialLineColor = "#415a77";
+const backgroundColor = "#0d1b2a";
 
 init();
 animate();
+
+function paramTerrain(u, v, target) {
+  u = 2 * (u - 0.5);
+  v = 2 * (v - 0.5);
+
+  let w = maxSize;
+
+  let x = (u * w) / 2;
+  let z = (v * w) / 2;
+
+  if (Math.abs(x) >= w / 2 || Math.abs(z) >= w / 2) {
+    target.set(x, 0, z);
+    return;
+  }
+
+  let amplitude = 14;
+  let frequency = 0.5;
+  let lacunarity = 2;
+  let gain = 0.5;
+  let octaves = 5;
+  let scale = 0.02;
+
+  let y = amplitude / 2;
+
+  for (let i = 0; i < octaves; i++) {
+    y += amplitude * noise2D(scale * x * frequency, scale * z * frequency);
+    frequency *= lacunarity;
+    amplitude *= gain;
+  }
+
+  if (y < 0) y = 0;
+
+  target.set(x, y, z);
+}
 
 function init() {
   camera = new THREE.PerspectiveCamera(
@@ -42,7 +86,7 @@ function init() {
     1,
     1000
   );
-  camera.position.set(120, 50, 120);
+  camera.position.set(120, 90, 120);
 
   scene = new THREE.Scene();
   scene.background = new THREE.Color(backgroundColor);
@@ -53,15 +97,35 @@ function init() {
 
   exporter = new STLExporter();
 
-  const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 2);
+  const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1);
   scene.add(hemiLight);
 
-  const material = new THREE.MeshPhongMaterial({ color: materialColor });
+  const ambientLight = new THREE.AmbientLight(0xffffff, 1);
+  scene.add(ambientLight);
 
-  const floorGeometry = new THREE.BoxGeometry(80, 1, 80);
+  const dirLight = new THREE.DirectionalLight(0xffbe0b, 1);
+  dirLight.position.set(1, 0.25, 0);
+  scene.add(dirLight);
+
+  const floorGeometry = new THREE.BoxGeometry(maxSize, 1, maxSize);
   geometries.push(floorGeometry);
 
-  let merged = BufferGeometryUtils.mergeGeometries([floorGeometry]);
+  const mountainGeometry = new ParametricGeometry(
+    paramTerrain,
+    maxSize,
+    maxSize
+  );
+  geometries.push(mountainGeometry);
+
+  const material = new THREE.MeshPhongMaterial({
+    color: materialColor,
+    side: THREE.DoubleSide,
+  });
+
+  let merged = BufferGeometryUtils.mergeGeometries([
+    floorGeometry,
+    mountainGeometry,
+  ]);
 
   mesh = new THREE.Mesh(merged, material);
   //mesh.position.set(0, 0, 2);
@@ -69,9 +133,7 @@ function init() {
 
   const wireframe = new THREE.WireframeGeometry(merged);
   const line = new THREE.LineSegments(wireframe);
-  //line.material.depthTest = false;
-  line.material.opacity = 0.25;
-  line.material.transparent = true;
+  line.material.color = new THREE.Color(materialLineColor);
 
   scene.add(line);
 
@@ -104,7 +166,7 @@ function onWindowResize() {
 function animate() {
   requestAnimationFrame(animate);
   scene.rotation.y += 0.0025;
-  camera.lookAt(0, 10, 0);
+  camera.lookAt(0, 20, 0);
   renderer.render(scene, camera);
 }
 

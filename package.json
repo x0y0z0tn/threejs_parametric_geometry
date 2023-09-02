@@ -10,6 +10,8 @@
     "start": "webpack serve --config ./config/webpack.config.dev.js"
   },
   "dependencies": {
+    "alea": "^1.0.1",
+    "simplex-noise": "^4.0.1",
     "three": "^0.155.0"
   },
   "devDependencies": {
