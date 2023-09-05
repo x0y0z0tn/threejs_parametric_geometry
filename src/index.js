@@ -36,14 +36,41 @@ const noise2D = createNoise2D(prng);
 let scene, camera, renderer, exporter, mesh;
 const geometries = [];
 
-const maxSize = 100;
+const maxSize = 250;
 
 const materialColor = "#e0e1dd";
 const materialLineColor = "#415a77";
+//const backgroundColor = "#002082";
 const backgroundColor = "#0d1b2a";
+let material;
+
+/* blueprint colors, RGB GLSL
+#002082 0.0, 0.125, 0.510
+#4A6DE5 0.290, 0.427, 0.898
+#CED8F7 0.808, 0.847, 0.969
+*/
 
 init();
 animate();
+
+function fbm(x, z) {
+  let amplitude = 5;
+  let frequency = 0.5;
+  let lacunarity = 2;
+  let gain = 0.5;
+  let octaves = 5;
+  let scale = 0.05;
+
+  let y = amplitude / 2;
+
+  for (let i = 0; i < octaves; i++) {
+    y += amplitude * noise2D(scale * x * frequency, scale * z * frequency);
+    frequency *= lacunarity;
+    amplitude *= gain;
+  }
+
+  return y;
+}
 
 function paramTerrain(u, v, target) {
   u = 2 * (u - 0.5);
@@ -54,29 +81,64 @@ function paramTerrain(u, v, target) {
   let x = (u * w) / 2;
   let z = (v * w) / 2;
 
-  if (Math.abs(x) >= w / 2 || Math.abs(z) >= w / 2) {
-    target.set(x, 0, z);
-    return;
-  }
+  let y = fbm(x, z);
 
-  let amplitude = 14;
-  let frequency = 0.5;
-  let lacunarity = 2;
-  let gain = 0.5;
-  let octaves = 5;
-  let scale = 0.02;
+  return { x, y, z };
+}
 
-  let y = amplitude / 2;
+function parametricNoisySphere(u, v, target) {
+  let theta = 2 * Math.PI * u;
+  let phi = Math.PI * (v - 0.5);
 
-  for (let i = 0; i < octaves; i++) {
-    y += amplitude * noise2D(scale * x * frequency, scale * z * frequency);
-    frequency *= lacunarity;
-    amplitude *= gain;
-  }
+  let xoff = (Math.cos(theta) * Math.cos(phi) * maxSize) / 2;
+  let yoff = (Math.sin(theta) * Math.cos(phi) * maxSize) / 2;
 
-  if (y < 0) y = 0;
+  let r = 30;
+  r += fbm(xoff, yoff);
 
-  target.set(x, y, z);
+  let x = r * Math.cos(theta) * Math.cos(phi);
+  let z = r * Math.sin(theta) * Math.cos(phi);
+  let y = r * Math.sin(phi);
+
+  return { x, y, z };
+}
+
+function parametricDoubleSpiral(u, v, target) {
+  let theta = 2 * Math.PI * u;
+  let phi = Math.PI * (v - 0.5);
+
+  let r0 = 20;
+  let r = r0;
+  let n = 1;
+
+  //r = r + 20 * Math.sin(n * theta) * Math.sin(n * phi);
+
+  let x = r * Math.cos(theta) * Math.cos(phi);
+  let z = r * Math.sin(theta) * Math.cos(phi);
+  let y = r * Math.sin(phi);
+
+  let ph = Math.atan(z, x);
+  let th = Math.acos(y / r);
+
+  n = 4;
+  r = r + r * Math.sin(1 * th);
+
+  let xr = r * Math.cos(n * th) * Math.cos(n * ph);
+  let zr = r * Math.sin(n * th) * Math.cos(n * ph);
+  let yr = r * Math.sin(n * ph);
+
+  x += xr;
+  z += zr;
+  y += yr;
+  y += 0.6 * r0;
+
+  return { x, y, z };
+}
+
+function parametricCurve(u, v, target) {
+  let s = parametricDoubleSpiral(u, v, target);
+
+  target.set(s.x, s.y, s.z);
 }
 
 function init() {
@@ -108,22 +170,97 @@ function init() {
   scene.add(dirLight);
 
   const floorGeometry = new THREE.BoxGeometry(maxSize, 1, maxSize);
-  geometries.push(floorGeometry);
+  //geometries.push(floorGeometry);
 
   const mountainGeometry = new ParametricGeometry(
-    paramTerrain,
+    parametricCurve,
     maxSize,
     maxSize
   );
   geometries.push(mountainGeometry);
 
-  const material = new THREE.MeshPhongMaterial({
-    color: materialColor,
+  //const material = new THREE.MeshPhongMaterial({
+  //color: materialColor,
+  //side: THREE.DoubleSide,
+  //});
+
+  let vertexShader = `
+  varying vec3 vPosition;
+varying vec3 vNormal;
+
+void main() {
+    vPosition = position;
+    vNormal = normalize(normalMatrix * normal);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
+}
+    `;
+
+  material = new THREE.ShaderMaterial({
+    uniforms: {
+      time: { value: 0.0 },
+    },
+    vertexShader,
+    fragmentShader: `
+uniform float time;
+
+varying vec3 vPosition;
+varying vec3 vNormal;
+
+vec3 palette( float t ) {
+    vec3 a = vec3(0.5, 0.5, 0.5);
+    vec3 b = vec3(0.5, 0.5, 0.5);
+    vec3 c = vec3(1.0, 1.0, 1.0);
+    vec3 d = vec3(0.263,0.416,0.557);
+
+    return a + b*cos( 6.28318*(c*t+d) );
+}
+
+void main() {
+    if (vPosition.z > 0.0 && vPosition.x > -10.0) discard;
+
+    vec2 uv = vPosition.xy * 0.01 + 0.5;
+    vec2 uv0 = uv;
+    vec3 finalColor = vec3(0.0);
+
+    for (float i = 0.0; i < 5.0; i++) {
+        uv = fract(uv * 1.5) - 0.5;
+
+        float d = length(uv) * exp(-length(uv0));
+
+        vec3 col = palette(length(uv0) + i*.4 + 0.75*time*.4);
+
+        d = sin(d*8. + 0.75*time)/8.;
+        d = abs(d);
+
+        d = pow(0.005 / d, 1.2);
+
+        finalColor += col * d;
+    }
+
+    gl_FragColor = vec4(finalColor, 0.25);
+    gl_FragColor = vec4( 0.290, 0.427, 0.898, 1.0);
+}
+    `,
     side: THREE.DoubleSide,
+    depthTest: true,
+    transparent: true,
+  });
+
+  const lineMaterial = new THREE.ShaderMaterial({
+    vertexShader,
+    fragmentShader: `
+        varying vec3 vPosition;
+        void main() {
+            //if (vPosition.z > 0.0 && vPosition.x > -10.0) discard;
+            gl_FragColor = vec4(0.808, 0.847, 0.969, 0.25);
+        }
+    `,
+    depthTest: true,
+    transparent: true,
   });
 
   let merged = BufferGeometryUtils.mergeGeometries([
-    floorGeometry,
+    //floorGeometry,
     mountainGeometry,
   ]);
 
@@ -132,8 +269,7 @@ function init() {
   scene.add(mesh);
 
   const wireframe = new THREE.WireframeGeometry(merged);
-  const line = new THREE.LineSegments(wireframe);
-  line.material.color = new THREE.Color(materialLineColor);
+  const line = new THREE.LineSegments(wireframe, lineMaterial);
 
   scene.add(line);
 
@@ -152,9 +288,9 @@ function init() {
     exportBinary: exportBinary,
   };
 
-  const gui = new GUI();
-  gui.add(params, "exportBinary").name("Export STL");
-  gui.open();
+  //const gui = new GUI();
+  //gui.add(params, "exportBinary").name("Export STL");
+  //gui.open();
 }
 
 function onWindowResize() {
@@ -168,6 +304,8 @@ function animate() {
   scene.rotation.y += 0.0025;
   camera.lookAt(0, 20, 0);
   renderer.render(scene, camera);
+
+  material.uniforms.time.value = performance.now() / 1000;
 }
 
 function exportBinary() {
